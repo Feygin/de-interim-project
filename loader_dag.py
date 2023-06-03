@@ -12,9 +12,16 @@ from dags.helpers import ConnectionBuilder
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models.variable import Variable
 
 # sys.path.append(str(Path(__file__).absolute().parent))
+
+# параметры
+
+POSTGRES_CONN_ID = 'DWH_CONN_ID'
+SQL_FOLDER  = '/lessons/dags/sql'
+BUSINESS_DT = '{{ ds }}'
 
 log = logging.getLogger(__name__)
 
@@ -48,9 +55,7 @@ def upload_from_s3_to_pg(conn_id: str, sql_path: str, **context) -> None:
     finally:
         conn.close()
 
-
-
-def get_dag() -> DAG:
+def get_dag():
 
     # получаем путь до каталога с sql файлами из переменной Airflow
     sql_path = Variable.get('STG_SQL_FILE_PATH')
@@ -79,8 +84,26 @@ def get_dag() -> DAG:
                 'sql_path': sql_path
             }
         )
+        
+        # development
+        load_dds_dims = list()
+        for i in ['dim_users', 'dim_page_urls', 'dim_referer_urls', 'dim_event_types']:
+            load_dds_dims.append(PostgresOperator(
+                task_id = f'update_{i}',
+                postgres_conn_id = POSTGRES_CONN_ID,
+                sql = f'/sql/load_dds_dim_{i}.sql',
+                parameters={"load_date": {BUSINESS_DT}} 
+                )
+            )
 
-        load_from_s3_to_stg
+        load_dds_fct = PostgresOperator(
+            task_id='update_fct_events',
+            postgres_conn_id=POSTGRES_CONN_ID,
+            sql= f'/sql/mart.load_dds_fct_events.sql',
+            parameters={"load_date": {BUSINESS_DT}} 
+        )
+
+        load_from_s3_to_stg >> load_dds_dims >> load_dds_fct
 
     return dag
 
