@@ -8,7 +8,7 @@ import psycopg2.extras
 import logging
 import os
 
-from helpers import ConnectionBuilder
+from dags.helpers import ConnectionBuilder
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
